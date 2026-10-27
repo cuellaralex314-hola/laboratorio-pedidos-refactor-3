@@ -1,99 +1,59 @@
-# laboratorio-pedidos — proyecto de práctica
+# laboratorio-pedidos
 
-Sistema de gestión de pedidos de un laboratorio de análisis clínicos.
-**PHP Vanilla, sin frameworks, sin Composer.** Corre en XAMPP tal cual está.
-
-> ⚠️ **Este proyecto está roto a propósito.**
-> Cada archivo contiene deuda técnica sembrada, marcada con comentarios:
->
-> ```php
-> // ❌ MAL APLICADO: qué método está mal y qué principio viola
-> // ✅ FORMA CORRECTA: qué patrón corresponde y cómo se estructura
-> ```
->
-> El objetivo no es que funcione mejor: ya funciona. El objetivo es que
-> **se pueda cambiar sin miedo**.
-
----
+Sistema de gestión de pedidos para un laboratorio de análisis clínicos, desarrollado en PHP vanilla sin framework ni Composer.
 
 ## Cómo levantarlo
 
-1. Copiar la carpeta dentro de `C:\xampp\htdocs\`.
-2. Iniciar Apache desde el panel de XAMPP (MySQL **no** hace falta).
-3. Abrir: `http://localhost/mini-proyecto-laboratorio/public/index.php`
+1. Copiar esta carpeta dentro de `C:\xampp\htdocs\`.
+2. Iniciar Apache desde XAMPP.
+3. Abrir en el navegador:
+   - `http://localhost/mini-proyecto-laboratorio/public/index.php?accion=crear`
+   - `http://localhost/mini-proyecto-laboratorio/public/index.php?accion=listar`
+   - `http://localhost/mini-proyecto-laboratorio/public/index.php?accion=reporte`
 
-Acciones disponibles:
+## Configuración
 
-| URL | Qué hace |
+La aplicación arranca sin configurar MySQL. `config/database.php` es opcional
+y está ignorado por Git; si no existe, el punto de entrada usa
+`config/database.example.php`. La persistencia de esta demo sigue simulada en
+memoria, por lo que las operaciones no se conservan al reiniciar PHP.
+
+No agregues credenciales reales al repositorio.
+
+## Patrones aplicados
+
+Se refactorizó el proyecto para reducir la deuda técnica y dejarlo más mantenible:
+
+- Strategy: cálculo de precios por tipo de paciente
+- Factory: creación de notificaciones por tipo
+- Observer: notificación de eventos de pedido
+- Decorator: generación de reportes con agregados encadenables
+- Adapter: integración con notificador heredado
+- Facade: servicio de pedidos con una API más simple
+- MVC: controlador y vista separados de la lógica de negocio
+
+## Acciones disponibles
+
+| URL | Resultado |
 |---|---|
-| `public/index.php?accion=crear` | Crea un pedido pasando por toda la deuda |
-| `public/index.php?accion=listar` | Lista pedidos desde la vista |
-| `public/index.php?accion=reporte` | Genera un reporte con banderas booleanas |
+| `?accion=crear` | Crea un pedido y lo procesa con validación, cálculo y notificación |
+| `?accion=listar` | Muestra la vista de pedidos |
+| `?accion=reporte` | Genera un reporte con decoradores |
 
-La persistencia está simulada en memoria para que el proyecto arranque sin
-configurar MySQL. Eso **no** es parte de la deuda a corregir.
+## Validación rápida
 
----
+Se puede comprobar el proyecto con PHP embebido local:
 
-## Mapa de deudas
-
-| Archivo | Síntoma sembrado | Patrón / principio | Ejercicio |
-|---|---|---|---|
-| `public/index.php` | Requires manuales, credenciales en el código, ruteo con `if` | Autoload + config externa + tabla de rutas | — |
-| `src/Database/Connection.php` | Una conexión nueva por consulta; excepción silenciada | **Singleton** | — |
-| `src/Notifications/NotificationSender.php` | `if` por tipo repetido en 3 archivos | **Factory** | Ej. 2 |
-| `src/Pricing/PriceCalculator.php` | `switch` con todos los algoritmos + lógica duplicada | **Strategy** | Ej. 1 |
-| `src/Events/OrderEvents.php` | Avisos encadenados a mano a clases concretas | **Observer** | Ej. 5 |
-| `src/Legacy/LegacyNotifier.php` | Clase de terceros modificada + copia y pega | **Adapter** | Ej. 3 |
-| `src/Reports/ReportGenerator.php` | Parámetros booleanos (`boolean trap`) | **Decorator** | Ej. 4 |
-| `src/Services/OrderService.php` | Método que hace de todo | **Facade** + SRP | Ej. 6 |
-| `src/Controllers/OrderController.php` | SQL + negocio + HTML en el controlador | **MVC** + SRP | Ej. 7 |
-| `src/Models/Order.php` | Modelo que se persiste y calcula precios | **Repository** + Strategy | — |
-| `views/orders.php` | Consulta, calcula y no escapa la salida | **MVC** | Ej. 8 |
-
----
-
-## La medida de la deuda de este proyecto
-
-El descuento de obra social (**0.7**) está escrito en **cinco archivos distintos**:
-
-```
-src/Models/Order.php
-src/Pricing/PriceCalculator.php   (dos veces)
-src/Services/OrderService.php
-src/Controllers/OrderController.php
-views/orders.php
+```bash
+php -S 127.0.0.1:8000 -t C:\xampp\htdocs\mini-proyecto-laboratorio
 ```
 
-Cuando el laboratorio lo cambie al 25%, ese número es exactamente
-cuántos lugares hay que tocar y cuántas oportunidades hay de olvidarse uno.
+Luego abrir:
 
-**Ese es el punto de toda la unidad.**
-
----
-
-## Mecánica de la clase práctica
-
-```
-1. Cada grupo toma UN archivo del mapa de deudas.       (5 min)
-2. Lee los comentarios ❌ y ✅.                          (5 min)
-3. Refactoriza en una rama propia: feat/patron-<nombre>  (20 min)
-4. Abre un Pull Request que responda tres cosas:
-     - qué deuda encontró (con la línea exacta)
-     - qué patrón aplicó y por qué ese y no otro
-     - qué consecuencia negativa tiene su propia solución
-5. Otro grupo revisa el PR y comenta.                    (10 min)
+```text
+http://127.0.0.1:8000/public/index.php?accion=listar
 ```
 
-El PR revisado por otro grupo es evidencia del TP Integrador.
+## Nota sobre la deuda técnica
 
----
-
-## Reglas del refactor
-
-- **No se rompe funcionalidad.** Antes y después, la app hace lo mismo.
-- **Un patrón por rama.** Nada de una rama con seis cambios mezclados.
-- **Se borra el código viejo.** Dejar el método anterior "por las dudas" es
-  deuda nueva.
-- **Se documenta la consecuencia negativa.** Un patrón sin contras analizadas
-  es sobreingeniería esperando su turno.
+El objetivo del ejercicio no fue reescribir toda la aplicación, sino dejarla preparada para cambiar sin miedo. El punto clave es que el descuento de obra social ya no queda repetido en varias capas del sistema; cada decisión quedó centralizada en la estrategia de precios.

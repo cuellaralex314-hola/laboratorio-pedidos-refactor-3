@@ -1,36 +1,16 @@
 <?php
-/**
- * ============================================================================
- *  SERVICIO DE PEDIDOS
- *  Patron esperado: FACADE (estructural) + separacion en servicios cohesivos
- * ============================================================================
- *
- *  ❌ DEUDA SEMBRADA
- *     Un unico metodo procesarPedidoCompleto() que hace de todo:
- *     valida, calcula, cobra, guarda, notifica, reporta y ademas imprime HTML.
- *     Es la clase que nadie quiere tocar: cualquier cambio puede romper otra cosa.
- *     Ademas repite el if por tipo de notificacion que ya existe en NotificationSender.
- *
- *  ✅ FORMA CORRECTA
- *     1. Cada paso en su propio servicio cohesivo (validacion, precio, pago...).
- *     2. Una fachada que ORQUESTA esos servicios en un metodo corto y legible.
- *     3. Las dependencias se inyectan por constructor, no se crean con new adentro.
- *
- *  ⚠️ Una fachada COORDINA. Si empieza a DECIDIR reglas de negocio, se convierte
- *     en la nueva clase que hace todo y volvimos al punto de partida.
- * ============================================================================
- */
-
 class OrderService
 {
-    /**
-     * ❌ METODO MAL APLICADO: procesarPedidoCompleto()
-     *    Sintomas medibles:
-     *      - mas de 6 responsabilidades en un solo metodo
-     *      - 4 niveles de anidamiento
-     *      - imposible de probar sin base de datos ni servidor de mail
-     *      - imprime HTML desde la capa de servicio (rompe MVC)
-     */
+    public function create(Order $order): void
+    {
+        $this->validar($order);
+        $total = PriceCalculator::forPatientType($order->patientType)->calculate($order->amount);
+        $guardado = new Order($order->id, $order->patient, $total, $order->patientType);
+        $guardado->guardar();
+        $this->notificar('email', 'paciente@mail.com', $guardado);
+        $this->avisarCreacion($guardado);
+    }
+
     public function procesarPedidoCompleto(
         int $id,
         string $paciente,
@@ -39,89 +19,45 @@ class OrderService
         string $tipoNotificacion,
         string $destino
     ): void {
-        // ---- 1. Validacion (deberia estar en su propio validador) ----
-        if (trim($paciente) === '') {
-            echo 'Falta el paciente<br>';   // ❌ la capa de servicio imprime HTML
-            return;
-        }
-
-        if ($monto <= 0) {
-            echo 'Monto invalido<br>';
-            return;
-        }
-
-        // ---- 2. Calculo de precio (deberia ser una Strategy) ----
-        $total = $monto;
-
-        if ($tipoPaciente === 'obra_social') {
-            $total = $monto * 0.7;          // ❌ tercera copia del 0.7 en el proyecto
-        } elseif ($tipoPaciente === 'jubilado') {
-            $total = $monto * 0.5;
-        }
-
-        // ---- 3. Persistencia (deberia ser un Repository) ----
-        // ❌ new adentro del metodo: no se puede reemplazar por un doble en pruebas
-        $order = new Order($id, $paciente, $total, $tipoPaciente);
-        $order->guardar();
-
-        // ---- 4. Notificacion (deberia ser una Factory) ----
-        // ❌ MISMO if que ya existe en NotificationSender::enviar()
-        if ($tipoNotificacion === 'email') {
-            $email = new EmailNotification();
-            $email->enviarEmail($destino, 'Pedido creado', "Pedido {$id} por $ {$total}");
-        }
-
-        if ($tipoNotificacion === 'sms') {
-            $sms = new SmsNotification();
-            $sms->mandarSms($destino, "Pedido {$id} por $ {$total}");
-        }
-
-        // ---- 5. Avisos internos (deberia ser un Observer) ----
-        $eventos = new OrderEvents();
-        $eventos->pedidoCreado($order);
-
-        // ---- 6. Reporte (deberia ser un Decorator) ----
-        $generador = new ReportGenerator();
-        echo $generador->generate("Pedido {$id}", true, true, false) . '<br>';
-
-        // ---- 7. Presentacion (deberia ser una View) ----
+        $order = new Order($id, $paciente, $monto, $tipoPaciente);
+        $this->validar($order);
+        $total = PriceCalculator::forPatientType($order->patientType)->calculate($order->amount);
+        $persistido = new Order($order->id, $order->patient, $total, $order->patientType);
+        $persistido->guardar();
+        $this->notificar($tipoNotificacion, $destino, $persistido);
+        $this->avisarCreacion($persistido);
+        echo (new ReportGenerator())->generate("Pedido {$id}", true, true, false) . '<br>';
         echo "<p>Pedido {$id} procesado. Total: $ {$total}</p>";
     }
-}
 
-/*
- * ============================================================================
- *  ✅ FORMA CORRECTA — FACADE SOBRE SERVICIOS COHESIVOS
- * ============================================================================
- *
- * final class OrderFacade
- * {
- *     public function __construct(
- *         private OrderValidator $validator,
- *         private PriceCalculator $calculator,
- *         private OrderRepository $repository,
- *         private OrderSubject $events
- *     ) {}
- *
- *     public function createOrder(Order $order): void
- *     {
- *         $this->validator->validate($order);
- *         $total = $this->calculator->calculate($order->amount);
- *         $this->repository->save($order);
- *         $this->events->notify($order);
- *     }
- * }
- *
- * El controlador queda en una linea:
- *   $facade->createOrder($order);
- *
- * Estructura:
- *   Controller -> OrderFacade -> Validator | Pricing | Repository | Events
- *
- * ----------------------------------------------------------------------------
- * EJERCICIO 6 (TP): dejar procesarPedidoCompleto() en menos de 10 lineas
- * sin que el sistema pierda ninguna funcionalidad.
- *
- * PREGUNTA PARA EL PR: Facade elimina la complejidad o la mueve de lugar?
- * ============================================================================
- */
+    public function listar(): array
+    {
+        return [
+            ['id' => 1, 'paciente' => 'Juan Perez', 'monto' => 15000, 'tipo' => 'obra_social'],
+            ['id' => 2, 'paciente' => 'Ana Gomez', 'monto' => 22000, 'tipo' => 'particular'],
+        ];
+    }
+
+    private function validar(Order $order): void
+    {
+        if (trim($order->patient) === '') {
+            throw new InvalidArgumentException('Falta el paciente');
+        }
+
+        if ($order->amount <= 0) {
+            throw new InvalidArgumentException('Monto invalido');
+        }
+    }
+
+    private function notificar(string $tipo, string $destino, Order $order): void
+    {
+        $mensaje = "Pedido {$order->id} por $ {$order->amount}";
+        (new NotificationSender())->enviar($tipo, $destino, $mensaje);
+    }
+
+    private function avisarCreacion(Order $order): void
+    {
+        $eventos = new OrderEvents();
+        $eventos->pedidoCreado($order);
+    }
+}
